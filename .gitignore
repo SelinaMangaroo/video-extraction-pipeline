@@ -1,0 +1,21 @@
+# API keys and config
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+.venv/
+
+# Generated files and media
+frames/
+captions/
+output/
+tmp/
+media/
+
+# Logs
+*.log
