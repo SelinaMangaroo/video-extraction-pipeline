@@ -16,6 +16,9 @@ captions/
 output/
 tmp/
 media/
+transcripts/
+logs/
 
 # Logs
 *.log
+.DS_Store
