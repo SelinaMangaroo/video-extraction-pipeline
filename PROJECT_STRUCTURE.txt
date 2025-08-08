@@ -1,0 +1,23 @@
+.
+├── PROJECT_STRUCTURE.txt
+├── captioning.py
+├── captions
+├── diarization.py
+├── frames
+├── logs
+├── media
+├── output
+├── requirements.txt
+├── speaker_map.json
+├── tmp
+├── transcripts
+└── utils
+    ├── __pycache__
+    ├── chat_gpt_utils.py
+    ├── diarization_utils.py
+    ├── extract_utils.py
+    ├── logging_utils.py
+    ├── speaker_utils.py
+    └── whisper_utils.py
+
+12 directories, 511 files

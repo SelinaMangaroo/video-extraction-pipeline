@@ -20,6 +20,7 @@ PY_SCENE_DETECT_THRESHOLD = float(os.getenv("PY_SCENE_DETECT_THRESHOLD", 50.0))
 MIN_SCENE_LENGTH = int(os.getenv("MIN_SCENE_LENGTH", 60))
 WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE")
 TRANSCRIPT_CACHE_DIR = os.getenv("TRANSCRIPT_CACHE_DIR")
+TRANSCRIPT_REPEAT_THRESHOLD = int(os.getenv("TRANSCRIPT_REPEAT_THRESHOLD", 8))
 
 def get_scene_frames(video_path, output_dir="frames"):
     os.makedirs(output_dir, exist_ok=True)
@@ -73,6 +74,37 @@ def get_scene_frames(video_path, output_dir="frames"):
 
     return scene_data
 
+def has_excessive_repeats(text):
+    """
+    Check if any word or phrase repeats consecutively more than `threshold` times.
+    """
+    words = text.split()
+
+    # Check repeated words
+    count = 1
+    last_word = None
+    for word in words:
+        if word == last_word:
+            count += 1
+            if count >= TRANSCRIPT_REPEAT_THRESHOLD:
+                return True
+        else:
+            count = 1
+            last_word = word
+
+    # Check repeated phrases (2 to 20 words)
+    for size in range(2, min(20, len(words) // 2)):
+        for i in range(len(words) - size * TRANSCRIPT_REPEAT_THRESHOLD + 1):
+            phrase = words[i:i + size]
+            repeated = True
+            for j in range(1, TRANSCRIPT_REPEAT_THRESHOLD):
+                if words[i + j * size:i + (j + 1) * size] != phrase:
+                    repeated = False
+                    break
+            if repeated:
+                return True
+    return False
+
 def run_captioning(video_path, scenes, transcript_segments, api_key, output_dir="captions"):
     logging.info("\nStarting captioning...\n")
     os.makedirs(output_dir, exist_ok=True)
@@ -92,7 +124,19 @@ def run_captioning(video_path, scenes, transcript_segments, api_key, output_dir=
         scene_id = f"scene_{scene['scene_number']:03}"
         scene_text = get_scene_transcript(scene["start_time"], scene["end_time"], transcript_segments)
         
+        # Skip transcript if it has excessive repeats
+        if scene_text and has_excessive_repeats(scene_text):
+            logging.warning(f"Scene {scene_id}: transcript text skipped due to excessive repeats.")
+            scene_text = ""
+        
         caption, keywords = caption_scene_with_images(scene["frames"], api_key, scene_text)
+        
+        # normalize return just in case
+        if not caption:
+            logging.error(f"{scene_id} → Captioning failed\n")
+            continue
+        if keywords is None:
+            keywords = []
 
         if caption:
             captions[scene_id] = {
@@ -101,7 +145,7 @@ def run_captioning(video_path, scenes, transcript_segments, api_key, output_dir=
                 "frame_files": list(scene["frames"].values()),
                 "transcript_text": scene_text,
                 "caption": caption.strip(),
-                "keywords": [kw.strip() for kw in keywords.split(",") if kw.strip()]
+                "keywords": keywords
             }
             # logging.info(f"{scene_id} → {caption}\nKeywords: {keywords}\n")
             logging.info(f"{scene_id} → Captions and keywords generated successfully\n")
