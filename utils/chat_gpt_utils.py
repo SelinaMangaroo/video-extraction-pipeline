@@ -6,9 +6,6 @@ import requests
 import logging
 import json
 
-CHAT_GPT_MODEL = os.getenv("CHAT_GPT_MODEL", "gpt-4o-mini")
-CHAT_GPT_RETRIES = int(os.getenv("CHAT_GPT_RETRIES", 10))
-
 # Convert image to base64 for OpenAI API
 def encode_image_to_base64(path):
     if not os.path.exists(path):
@@ -17,7 +14,7 @@ def encode_image_to_base64(path):
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode("utf-8")
 
-def caption_scene_with_images(frame_paths, api_key, transcript):
+def caption_scene_with_images(frame_paths, api_key, transcript, CHAT_GPT_MODEL, CHAT_GPT_RETRIES):
     full_prompt = (
         "Analyze the following transcript and images. "
         "Return a single-sentence caption for this scene and do not infer beyond what is visible and within the transcript text. "
