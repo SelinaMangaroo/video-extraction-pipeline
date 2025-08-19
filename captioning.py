@@ -1,18 +1,19 @@
 import os
 import time
-from datetime import timedelta
 import json
 import subprocess
 import logging
+import argparse
+from datetime import timedelta
 from dotenv import load_dotenv
 from scenedetect import open_video, SceneManager
 from scenedetect.detectors import ContentDetector
 from utils.logging_utils import setup_logger
-from utils.chat_gpt_utils import caption_scene_with_images
+from utils.chat_gpt_utils import caption_scene_with_images, build_prompt_and_images
+import utils.chat_gpt_utils as chat_gpt_utils
+from utils.batch_utils import submit_and_parse_batch 
 from utils.extract_utils import extract_frame_with_ffmpeg
 from utils.whisper_utils import transcribe_video_with_whisper
-
-import argparse
 
 # CLI argument parsing
 parser = argparse.ArgumentParser(description="Video captioning pipeline")
@@ -23,17 +24,6 @@ args = parser.parse_args()
 
 # Load environment variables
 load_dotenv()
-# VIDEO_PATH = os.getenv("VIDEO_PATH")
-# OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-# PY_SCENE_DETECT_THRESHOLD = float(os.getenv("PY_SCENE_DETECT_THRESHOLD", 50.0))
-# MIN_SCENE_LENGTH = int(os.getenv("MIN_SCENE_LENGTH", 60))
-# NUM_FRAMES_PER_SCENE = int(os.getenv("NUM_FRAMES_PER_SCENE", 4))
-# WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE")
-# TRANSCRIPT_CACHE_DIR = os.getenv("TRANSCRIPT_CACHE_DIR")
-# TRANSCRIPT_REPEAT_THRESHOLD = int(os.getenv("TRANSCRIPT_REPEAT_THRESHOLD", 8))
-# CHAT_GPT_MODEL = os.getenv("CHAT_GPT_MODEL", "gpt-4o-mini")
-# CHAT_GPT_RETRIES = int(os.getenv("CHAT_GPT_RETRIES", 10))
-
 VIDEO_PATH = args.input or os.getenv("VIDEO_PATH")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 PY_SCENE_DETECT_THRESHOLD = float(os.getenv("PY_SCENE_DETECT_THRESHOLD", 50.0))
@@ -47,8 +37,10 @@ CHAT_GPT_MODEL = os.getenv("CHAT_GPT_MODEL", "gpt-4o-mini")
 CHAT_GPT_RETRIES = int(os.getenv("CHAT_GPT_RETRIES", 10))
 CAPTION_DIR = args.output or os.getenv("CAPTIONS_DIR", "captions")
 LOGS_DIR = args.log or os.getenv("LOGS_DIR", "logs")
+USE_BATCH_API = os.getenv("USE_BATCH_API", "true").lower() in ("true", "1", "yes")
 
 def get_scene_frames(video_path, output_dir="frames"):
+    '''Extract frames from video scenes using SceneDetect and save them to output directory.'''
     video_name = os.path.splitext(os.path.basename(video_path))[0]
 
     output_dir = os.path.join(output_dir, f"{video_name}_frames")
@@ -105,9 +97,7 @@ def get_scene_frames(video_path, output_dir="frames"):
     return scene_data
 
 def has_excessive_repeats(text):
-    """
-    Check if any word or phrase repeats consecutively more than `threshold` times.
-    """
+    """Check if any word or phrase repeats consecutively more than 'threshold' times."""
     words = text.split()
 
     # Check repeated words
@@ -136,42 +126,63 @@ def has_excessive_repeats(text):
     return False
 
 def run_captioning(video_path, scenes, transcript_segments, api_key, output_dir="captions"):
-    logging.info("\nStarting captioning...\n")
+    """Run the captioning process for a video using GPT and save results to output directory."""
     os.makedirs(output_dir, exist_ok=True)
+
     video_name = os.path.splitext(os.path.basename(video_path))[0]
     output_path = os.path.join(output_dir, f"{video_name}_captions.json")
     captions = {}
 
-    # extract transcript for the given scene range
-    def get_scene_transcript(scene_start, scene_end, segments):
-        return " ".join(
-            seg["text"].strip()
-            for seg in segments
-            if seg.get("end", 0) > scene_start and seg.get("start", 0) < scene_end and seg.get("text", "").strip()
-        ).strip()
-    
+    batch_requests = []
+    scene_id_map = {}
+
     for scene in scenes:
         scene_id = f"scene_{scene['scene_number']:03}"
-        scene_text = get_scene_transcript(scene["start_time"], scene["end_time"], transcript_segments)
         
-        # Skip transcript if it has excessive repeats
+        scene_text = " ".join(
+            seg["text"].strip()
+            for seg in transcript_segments
+            if seg.get("end", 0) > scene["start_time"] and seg.get("start", 0) < scene["end_time"] and seg.get("text", "").strip()
+        ).strip()
+
         if scene_text and has_excessive_repeats(scene_text):
             logging.warning(f"Scene {scene_id}: transcript text skipped due to excessive repeats.")
             scene_text = ""
-            
+
         transcript_for_prompt = scene_text if INCLUDE_TRANSCRIPT_IN_GPT else ""
-        caption, keywords = caption_scene_with_images(scene["frames"], api_key, transcript_for_prompt, CHAT_GPT_MODEL, CHAT_GPT_RETRIES)
 
-        # caption, keywords = caption_scene_with_images(scene["frames"], api_key, scene_text, CHAT_GPT_MODEL, CHAT_GPT_RETRIES)
-        
-        # normalize return just in case
-        if not caption:
-            logging.error(f"{scene_id} → Captioning failed\n")
-            continue
-        if keywords is None:
-            keywords = []
+        if USE_BATCH_API:
+            full_prompt, image_inputs = build_prompt_and_images(transcript_for_prompt, scene["frames"])
 
-        if caption:
+            custom_id = f"{video_name}_{scene_id}"
+            messages = [{"role": "user", "content": [{"type": "text", "text": full_prompt}] + image_inputs}]
+            batch_requests.append({
+                "custom_id": custom_id,
+                "method": "POST",
+                "url": "/v1/chat/completions",
+                "body": {
+                    "model": CHAT_GPT_MODEL,
+                    "messages": messages,
+                    "max_tokens": 400
+                }
+            })
+            scene_id_map[custom_id] = {
+                "start_time": scene["start_time"],
+                "end_time": scene["end_time"],
+                "frame_files": list(scene["frames"].values()),
+                "transcript_text": scene_text
+            }
+            logging.info(f"{custom_id} → Queued for batch captioning.")
+        else:
+            caption, keywords = caption_scene_with_images(
+                scene["frames"], api_key, transcript_for_prompt, CHAT_GPT_MODEL, CHAT_GPT_RETRIES
+            )
+
+            if not caption:
+                logging.error(f"{scene_id} → Captioning failed\n")
+                continue
+            keywords = keywords or []
+
             captions[scene_id] = {
                 "start_time": scene["start_time"],
                 "end_time": scene["end_time"],
@@ -180,15 +191,15 @@ def run_captioning(video_path, scenes, transcript_segments, api_key, output_dir=
                 "caption": caption.strip(),
                 "keywords": keywords
             }
-            # logging.info(f"{scene_id} → {caption}\nKeywords: {keywords}\n")
             logging.info(f"{scene_id} → Captions and keywords generated successfully\n")
-        else:
-            logging.error(f"{scene_id} → Captioning failed\n")
+
+    if USE_BATCH_API and batch_requests:
+        captions_from_batch = submit_and_parse_batch(batch_requests, scene_id_map, api_key)
+        captions.update(captions_from_batch)
 
     with open(output_path, "w") as f:
         json.dump(captions, f, indent=2)
         logging.info(f"Captions saved to {output_path}")
-    
     
 if __name__ == "__main__":
     start_time_all = time.time()
@@ -212,7 +223,7 @@ if __name__ == "__main__":
         logging.info(f"=== Starting video processing pipeline for: {vp} ===")
 
         logging.info("==== Starting Scene Detection ====")
-        scenes = get_scene_frames(vp)  # this already writes to {videoname}_frames/
+        scenes = get_scene_frames(vp)
         logging.info(f"Extracted {len(scenes)} scenes from video.")
 
         logging.info("==== Starting Whisper Transcription ====")
@@ -221,8 +232,16 @@ if __name__ == "__main__":
 
         logging.info("==== Starting GPT Captioning ====")
         run_captioning(vp, scenes, transcript_segments, OPENAI_API_KEY, output_dir=CAPTION_DIR)
+
         logging.info("Captioning process completed successfully.")
 
         logging.info(f"Total processing time for {vp}: {timedelta(seconds=int(time.time() - start_time))}")
 
-    logging.info(f"=== All done. Total processing time: {timedelta(seconds=int(time.time() - start_time_all))} ===")
+    logging.info(f"Total processing time overall: {timedelta(seconds=int(time.time() - start_time_all))}")
+    logging.info(f"Total time lost to rate limit backoffs: {chat_gpt_utils.TOTAL_RATE_LIMIT_BACKOFF:.1f} seconds")
+    
+    logging.info("=== GPT Token Usage Summary ===")
+    logging.info(f"Prompt tokens:     {chat_gpt_utils.TOTAL_TOKENS_USED['prompt_tokens']}")
+    logging.info(f"Completion tokens: {chat_gpt_utils.TOTAL_TOKENS_USED['completion_tokens']}")
+    logging.info(f"Total tokens:      {chat_gpt_utils.TOTAL_TOKENS_USED['total_tokens']}")
+    logging.info(f"Estimated total cost for all videos: ${chat_gpt_utils.TOTAL_COST['value']:.6f}")
