@@ -4,6 +4,8 @@ import os
 
 # Extract audio from video using ffmpeg, used in diarization.py
 def extract_audio(video_path, audio_path):
+    '''Extract audio from a video file using ffmpeg and save it to the specified path.'''
+    
     logging.info("Extracting audio...")
     command = [
         "ffmpeg", "-i", video_path,
@@ -15,6 +17,8 @@ def extract_audio(video_path, audio_path):
 
 # Extract single frame with ffmpeg, used in captioning.py
 def extract_frame_with_ffmpeg(video_path, time_sec, output_path):
+    '''Extract a single frame from a video at the specified time and save it to the output path.'''
+    
     time_str = f"{time_sec:.3f}"
     cmd = [
         "ffmpeg", "-y",

@@ -29,7 +29,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 PY_SCENE_DETECT_THRESHOLD = float(os.getenv("PY_SCENE_DETECT_THRESHOLD", 50.0))
 MIN_SCENE_LENGTH = int(os.getenv("MIN_SCENE_LENGTH", 60))
 NUM_FRAMES_PER_SCENE = int(os.getenv("NUM_FRAMES_PER_SCENE", 4))
-WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE")
+WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", 'tiny')
 TRANSCRIPT_CACHE_DIR = os.getenv("TRANSCRIPT_CACHE_DIR")
 TRANSCRIPT_REPEAT_THRESHOLD = int(os.getenv("TRANSCRIPT_REPEAT_THRESHOLD", 8))
 INCLUDE_TRANSCRIPT_IN_GPT = os.getenv("INCLUDE_TRANSCRIPT_IN_GPT", "true").lower() in ("true", "1", "yes")
@@ -41,6 +41,7 @@ USE_BATCH_API = os.getenv("USE_BATCH_API", "true").lower() in ("true", "1", "yes
 
 def get_scene_frames(video_path, output_dir="frames"):
     '''Extract frames from video scenes using SceneDetect and save them to output directory.'''
+    
     video_name = os.path.splitext(os.path.basename(video_path))[0]
 
     output_dir = os.path.join(output_dir, f"{video_name}_frames")
@@ -98,6 +99,7 @@ def get_scene_frames(video_path, output_dir="frames"):
 
 def has_excessive_repeats(text):
     """Check if any word or phrase repeats consecutively more than 'threshold' times."""
+    
     words = text.split()
 
     # Check repeated words
@@ -127,6 +129,7 @@ def has_excessive_repeats(text):
 
 def run_captioning(video_path, scenes, transcript_segments, api_key, output_dir="captions"):
     """Run the captioning process for a video using GPT and save results to output directory."""
+    
     os.makedirs(output_dir, exist_ok=True)
 
     video_name = os.path.splitext(os.path.basename(video_path))[0]

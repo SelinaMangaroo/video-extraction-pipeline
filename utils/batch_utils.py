@@ -10,19 +10,25 @@ load_dotenv()
 BATCH_INPUT_FILE = "batch_input.jsonl"
 
 def submit_batch_and_get_output_file(batch_requests, api_key):
+    '''Submit a batch of requests to OpenAI and return the output file ID.'''
     
     client = OpenAI(api_key=api_key)
+    
     with open(BATCH_INPUT_FILE, "w") as f:
         for req in batch_requests:
             json.dump(req, f)
             f.write("\n")
+            
     upload = client.files.create(file=open(BATCH_INPUT_FILE, "rb"), purpose="batch")
+    
     batch = client.batches.create(
         input_file_id=upload.id,
         endpoint="/v1/chat/completions",
         completion_window="24h"
     )
+    
     logging.info(f"Submitted batch: {batch.id}")
+    
     while True:
         batch = client.batches.retrieve(batch.id)
         logging.info(f"Status: {batch.status}")
@@ -33,10 +39,13 @@ def submit_batch_and_get_output_file(batch_requests, api_key):
         time.sleep(10)
 
 def parse_batch_output(output_file_id, captions_by_scene, model_name="gpt-4o-mini"):
-    client = OpenAI()  # Re-initialize if needed
+    '''Parse the output file from a batch request and update captions_by_scene.'''
+    
+    client = OpenAI()
     output = client.files.content(output_file_id).text
     for line in output.splitlines():
         obj = json.loads(line)
+        logging.info(f"OBJ: {obj}")
         try:
             scene_id = obj["custom_id"]
             content = obj["response"]["body"]["choices"][0]["message"]["content"]
@@ -74,6 +83,8 @@ def parse_batch_output(output_file_id, captions_by_scene, model_name="gpt-4o-min
             logging.error(f"Failed to parse scene: {e}")
 
 def submit_and_parse_batch(batch_requests, scene_id_map, api_key):
+    '''Submit a batch of requests and parse the output.'''
+    
     output_file_id = submit_batch_and_get_output_file(batch_requests, api_key)
     parse_batch_output(output_file_id, scene_id_map)
     return scene_id_map

@@ -5,13 +5,17 @@ import os
 
 # Run Whisper transcription on the audio file, used in diarization.py
 def run_whisper(audio_path):
+    '''Run Whisper transcription on the audio file and return the segments.'''
+    
     logging.info("Transcribing with Whisper...")
     model = whisper.load_model("tiny")
     result = model.transcribe(audio_path, word_timestamps=True)
     return result["segments"]
 
 # Transcribe video using Whisper and cache the result, used in captioning.py
-def transcribe_video_with_whisper(video_path, TRANSCRIPT_CACHE_DIR, WHISPER_MODEL_SIZE="tiny"):
+def transcribe_video_with_whisper(video_path, TRANSCRIPT_CACHE_DIR, WHISPER_MODEL_SIZE):
+    '''Transcribe a video file using Whisper and cache the result.'''
+    
     os.makedirs(TRANSCRIPT_CACHE_DIR, exist_ok=True)
 
     video_name = os.path.splitext(os.path.basename(video_path))[0]

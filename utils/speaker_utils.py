@@ -3,6 +3,8 @@ import os
 import logging
 
 def load_speaker_map(path="speaker_map.json"):
+    '''Load the speaker map from a JSON file.'''
+    
     if os.path.exists(path):
         with open(path) as f:
             logging.info("Loaded speaker map.")
@@ -11,6 +13,8 @@ def load_speaker_map(path="speaker_map.json"):
     return {}
 
 def match_speakers(transcript_segments, diarization_segments, speaker_map):
+    '''Match speakers to transcript segments based on diarization data.'''
+    
     logging.info("Matching speakers to transcript...")
     matched = []
     for seg in transcript_segments:

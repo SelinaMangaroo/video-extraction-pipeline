@@ -5,6 +5,7 @@ from pathlib import Path
 
 def setup_logger(video_path: str, output_dir: str = "output") -> str:
     """Initializes and configures logging. Returns path to log file."""
+    
     os.makedirs(output_dir, exist_ok=True)
         
     path = Path(video_path).resolve()

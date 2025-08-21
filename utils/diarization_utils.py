@@ -2,6 +2,8 @@ from pyannote.audio import Pipeline
 import logging
 
 def run_diarization(audio_path, token):
+    '''Run speaker diarization on the audio file using PyAnnote and return the segments.'''
+    
     logging.info("Running speaker diarization...")
     pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization", use_auth_token=token)
     diarization = pipeline(audio_path)

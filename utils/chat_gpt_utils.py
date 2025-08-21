@@ -15,6 +15,8 @@ TOTAL_TOKENS_USED = {
 TOTAL_COST = {"value": 0.0}
 
 def build_prompt_and_images(transcript_text, frames):
+    '''Build the prompt and image inputs for the OpenAI API request.'''
+    
     prompt = (
         "Analyze the following transcript and images. "
         "Return a single-sentence caption for this scene and do not infer beyond what is visible and within the transcript text. "
@@ -33,6 +35,8 @@ def build_prompt_and_images(transcript_text, frames):
 
 # Convert image to base64 for OpenAI API
 def encode_image_to_base64(path):
+    '''Encode an image file to base64 string.'''
+    
     if not os.path.exists(path):
         logging.info(f"Skipping missing image: {path}")
         return None
@@ -40,7 +44,8 @@ def encode_image_to_base64(path):
         return base64.b64encode(f.read()).decode("utf-8")
 
 def calculate_token_cost(model_name, prompt_tokens, completion_tokens, batch_mode=False):
-    # Standard prices per 1M tokens
+    '''Calculate the estimated cost of tokens used in a request.'''
+    
     prompt_rate = 0.15 / 1_000_000
     completion_rate = 0.60 / 1_000_000
 
@@ -50,14 +55,17 @@ def calculate_token_cost(model_name, prompt_tokens, completion_tokens, batch_mod
 
     return round(prompt_tokens * prompt_rate + completion_tokens * completion_rate, 6)
 
-
 def safe_json_extract(output):
+    '''Safely extract JSON from the OpenAI response, handling common formatting issues.'''
+    
     output = re.sub(r'^\s*```(?:json)?\s*', '', output, flags=re.IGNORECASE)
     output = re.sub(r'\s*```\s*$', '', output)
     m = re.search(r'\{.*\}', output, flags=re.DOTALL)
     return m.group(0) if m else output
 
 def caption_scene_with_images(frame_paths, api_key, transcript, model, retries):
+    '''Caption a scene using OpenAI's chat completion API with images.'''
+    
     prompt, images = build_prompt_and_images(transcript, frame_paths)
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
     body = {
