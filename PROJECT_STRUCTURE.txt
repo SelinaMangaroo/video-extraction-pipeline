@@ -1,5 +1,6 @@
 .
 ├── PROJECT_STRUCTURE.txt
+├── bath_input.jsonl
 ├── captioning.py
 ├── captions
 ├── diarization.py
@@ -11,8 +12,11 @@
 ├── speaker_map.json
 ├── tmp
 ├── transcripts
+├── .env
+├── .gitignore
 └── utils
     ├── __pycache__
+    ├── batch_utils.py
     ├── chat_gpt_utils.py
     ├── diarization_utils.py
     ├── extract_utils.py
